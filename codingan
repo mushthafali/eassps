@@ -1,0 +1,302 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import tkinter as tk
+from tkinter import ttk
+
+# Function to generate EEG signal with noise
+def generate_eeg_signal(frequencies, sampling_rate, duration, noise_level=0):
+    t = np.linspace(0, duration, int(sampling_rate * duration), endpoint=False)
+    eeg_signal = np.sum([np.sin(2 * np.pi * f * t) for f in frequencies], axis=0)
+    noise = noise_level * np.random.normal(size=len(t))
+    noisy_eeg_signal = eeg_signal + noise
+    return t, noisy_eeg_signal
+
+# Function to calculate and plot the DFT
+def plot_dft(ax, t, signal):
+    N = len(signal)
+    if N < 2:
+        ax.clear()
+        ax.set_title("DFT of Sensor Signal")
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude")
+        ax.text(0.5, 0.5, "Not enough data points for DFT", ha='center', va='center', transform=ax.transAxes)
+        ax.grid(True)
+    else:
+        freqs = np.fft.fftfreq(N, t[1] - t[0])
+        dft_signal = np.fft.fft(signal)
+        ax.clear()
+        ax.plot(freqs[:N//2], np.abs(dft_signal)[:N//2])  # Plot only positive frequencies
+        ax.set_title("DFT of Sensor Signal")
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude")
+        ax.grid(True)
+
+# Function to update EEG plot
+def update_eeg():
+    try:
+        frequencies = list(map(float, entry_eeg_frequencies.get().split()))
+        sampling_rate = int(entry_eeg_sampling_rate.get())
+        duration = float(entry_eeg_duration.get())
+        noise_level = float(entry_eeg_noise.get())
+        t, eeg_signal = generate_eeg_signal(frequencies, sampling_rate, duration, noise_level)
+        
+        # Plot EEG signal
+        ax1.clear()
+        ax1.plot(t, eeg_signal, 'k-')
+        ax1.set_title("EEG Signal with Noise")
+        ax1.set_xlabel("Time (s)")
+        ax1.set_ylabel("Amplitude")
+        ax1.grid(True)
+
+        # Plot DFT of EEG signal
+        plot_dft(ax2, t, eeg_signal)
+
+        canvas.draw()
+    except ValueError:
+        pass
+
+# Function to update GSR plot
+def update_gsr():
+    try:
+        voltage = float(entry_gsr_voltage.get())
+        current = float(entry_gsr_current.get())
+        resistance = voltage / current if current != 0 else np.inf
+        ax1.clear()
+        ax1.scatter([voltage], [resistance], color='b', label=f'R = {resistance:.2f} Ohms')
+        ax1.plot([0, voltage], [0, resistance], 'b--')
+        ax1.set_title("GSR Resistance vs Voltage")
+        ax1.set_xlabel("Voltage (V)")
+        ax1.set_ylabel("Resistance (Ohms)")
+        ax1.legend()
+        ax1.grid(True)
+
+        # Plot DFT of GSR resistance data (not meaningful, just for visualization)
+        if len([voltage]) > 1:
+            plot_dft(ax2, np.array([voltage]), np.array([resistance]))
+
+        canvas.draw()
+    except ValueError:
+        pass
+
+# Function to update MLX90614 plot
+def update_mlx90614():
+    try:
+        voltage = float(entry_mlx_voltage.get())
+        calibration_constant = float(entry_mlx_calibration.get())
+        reference_temp = float(entry_mlx_reference_temp.get())
+        temperature = (voltage / calibration_constant) + reference_temp
+        ax1.clear()
+        ax1.scatter([voltage], [temperature], color='r', label=f'T = {temperature:.2f} °C')
+        ax1.plot([0, voltage], [0, temperature], 'r--')
+        ax1.set_title("MLX90614 Temperature vs Voltage Output")
+        ax1.set_xlabel("Voltage Output (V)")
+        ax1.set_ylabel("Temperature (°C)")
+        ax1.legend()
+        ax1.grid(True)
+
+        # Plot DFT of temperature data (only if more than one point)
+        if len([voltage]) > 1:
+            plot_dft(ax2, np.array([voltage]), np.array([temperature]))
+
+        canvas.draw()
+    except ValueError:
+        pass
+
+# Function to update MAX30102 plot
+def update_max30102():
+    try:
+        ir_signal = float(entry_max_ir.get())
+        red_signal = float(entry_max_red.get())
+        spo2 = (ir_signal / red_signal) * 100 if red_signal != 0 else 0
+        ax1.clear()
+        ax1.scatter([ir_signal], [spo2], color='g', label=f'SpO2 = {spo2:.2f}%')
+        ax1.plot([0, ir_signal], [0, spo2], 'g--')
+        ax1.set_title("SpO2 vs IR Signal")
+        ax1.set_xlabel("IR Signal (V)")
+        ax1.set_ylabel("SpO2 (%)")
+        ax1.legend()
+        ax1.grid(True)
+
+        # Plot DFT of SpO2 data (only if more than one point)
+        if len([ir_signal]) > 1:
+            plot_dft(ax2, np.array([ir_signal]), np.array([spo2]))
+
+        canvas.draw()
+    except ValueError:
+        pass
+
+# Function to update USG plot
+def update_usg():
+    try:
+        frequency = float(entry_usg_frequency.get())
+        speed_of_sound = float(entry_usg_speed.get())
+        media = combo_usg_media.get()
+        noise_level = float(entry_usg_noise.get())
+
+        if media == "Liquid":
+            speed_of_sound = 1500
+        elif media == "Soft Tissue":
+            speed_of_sound = 1540
+        elif media == "Bone":
+            speed_of_sound = 4080
+
+        base_distance = 100.0
+        noise = np.random.normal(0, noise_level)
+        measured_distance = base_distance + noise
+        wavelength = speed_of_sound / frequency
+        t = np.linspace(0, 1 / frequency, 1000)
+        sinus_wave = np.sin(2 * np.pi * frequency * t)
+
+        ax1.clear()
+        ax1.plot(t, sinus_wave, 'm-', label=f'Sinusoidal Wave at {frequency} Hz')
+        ax1.scatter([1 / frequency], [measured_distance], color='m', label=f'Measured Distance = {measured_distance:.2f} cm')
+        ax1.set_title("USG Sinusoidal Wave and Measured Distance with Noise")
+        ax1.set_xlabel("Time (s)")
+        ax1.set_ylabel("Amplitude / Distance (cm)")
+        ax1.legend()
+        ax1.grid(True)
+
+        # Plot DFT of USG signal
+        plot_dft(ax2, t, sinus_wave)
+
+        canvas.draw()
+    except ValueError:
+        pass
+
+# Function to update the form based on selected sensor
+def update_sensor_form(event):
+    selected_sensor = combo_sensor.get()
+    # Hide the Reset button initially
+    reset_button.grid_forget()
+    # Hide all input forms initially
+    for widget in frame_inputs.winfo_children():
+        widget.grid_forget()
+
+    if selected_sensor == "EEG":
+        ttk.Label(frame_inputs, text="EEG Frequencies (Hz, space-separated):").grid(row=0, column=0, sticky=tk.W)
+        entry_eeg_frequencies.grid(row=0, column=1)
+        entry_eeg_frequencies.insert(0, "10 20")
+
+        ttk.Label(frame_inputs, text="EEG Sampling Rate (Hz):").grid(row=1, column=0, sticky=tk.W)
+        entry_eeg_sampling_rate.grid(row=1, column=1)
+        entry_eeg_sampling_rate.insert(0, "500")
+
+        ttk.Label(frame_inputs, text="EEG Duration (s):").grid(row=2, column=0, sticky=tk.W)
+        entry_eeg_duration.grid(row=2, column=1)
+        entry_eeg_duration.insert(0, "1")
+
+        ttk.Label(frame_inputs, text="EEG Noise Level:").grid(row=3, column=0, sticky=tk.W)
+        entry_eeg_noise.grid(row=3, column=1)
+        entry_eeg_noise.insert(0, "0.1")
+
+        ttk.Button(frame_inputs, text="Update EEG", command=update_eeg).grid(row=4, column=0, columnspan=2, pady=5)
+        reset_button.grid(row=5, column=0, columnspan=2, pady=5)  # Show reset button
+
+    elif selected_sensor == "GSR":
+        ttk.Label(frame_inputs, text="GSR Voltage (V):").grid(row=0, column=0, sticky=tk.W)
+        entry_gsr_voltage.grid(row=0, column=1)
+        entry_gsr_voltage.insert(0, "1.0")
+
+        ttk.Label(frame_inputs, text="GSR Current (A):").grid(row=1, column=0, sticky=tk.W)
+        entry_gsr_current.grid(row=1, column=1)
+        entry_gsr_current.insert(0, "0.01")
+
+        ttk.Button(frame_inputs, text="Update GSR", command=update_gsr).grid(row=2, column=0, columnspan=2, pady=5)
+        reset_button.grid(row=3, column=0, columnspan=2, pady=5)
+
+    elif selected_sensor == "MLX90614":
+        ttk.Label(frame_inputs, text="MLX90614 Voltage (V):").grid(row=0, column=0, sticky=tk.W)
+        entry_mlx_voltage.grid(row=0, column=1)
+        entry_mlx_voltage.insert(0, "0.75")
+
+        ttk.Label(frame_inputs, text="MLX90614 Calibration Constant:").grid(row=1, column=0, sticky=tk.W)
+        entry_mlx_calibration.grid(row=1, column=1)
+        entry_mlx_calibration.insert(0, "0.25")
+
+        ttk.Label(frame_inputs, text="MLX90614 Reference Temperature (°C):").grid(row=2, column=0, sticky=tk.W)
+        entry_mlx_reference_temp.grid(row=2, column=1)
+        entry_mlx_reference_temp.insert(0, "25")
+
+        ttk.Button(frame_inputs, text="Update MLX90614", command=update_mlx90614).grid(row=3, column=0, columnspan=2, pady=5)
+        reset_button.grid(row=4, column=0, columnspan=2, pady=5)
+
+    elif selected_sensor == "MAX30102":
+        ttk.Label(frame_inputs, text="MAX30102 IR Signal (V):").grid(row=0, column=0, sticky=tk.W)
+        entry_max_ir.grid(row=0, column=1)
+        entry_max_ir.insert(0, "0.8")
+
+        ttk.Label(frame_inputs, text="MAX30102 Red Signal (V):").grid(row=1, column=0, sticky=tk.W)
+        entry_max_red.grid(row=1, column=1)
+        entry_max_red.insert(0, "0.6")
+
+        ttk.Button(frame_inputs, text="Update MAX30102", command=update_max30102).grid(row=2, column=0, columnspan=2, pady=5)
+        reset_button.grid(row=3, column=0, columnspan=2, pady=5)
+
+    elif selected_sensor == "USG":
+        ttk.Label(frame_inputs, text="USG Frequency (Hz):").grid(row=0, column=0, sticky=tk.W)
+        entry_usg_frequency.grid(row=0, column=1)
+        entry_usg_frequency.insert(0, "1.0")
+
+        ttk.Label(frame_inputs, text="USG Noise Level:").grid(row=1, column=0, sticky=tk.W)
+        entry_usg_noise.grid(row=1, column=1)
+        entry_usg_noise.insert(0, "0.01")
+
+        ttk.Label(frame_inputs, text="USG Speed of Sound (m/s):").grid(row=2, column=0, sticky=tk.W)
+        entry_usg_speed.grid(row=2, column=1)
+        entry_usg_speed.insert(0, "1500")
+
+        ttk.Label(frame_inputs, text="USG Media Type:").grid(row=3, column=0, sticky=tk.W)
+        combo_usg_media.grid(row=3, column=1)
+        combo_usg_media.set("Liquid")
+
+        ttk.Button(frame_inputs, text="Update USG", command=update_usg).grid(row=4, column=0, columnspan=2, pady=5)
+        reset_button.grid(row=5, column=0, columnspan=2, pady=5)
+
+# Set up the main window
+root = tk.Tk()
+root.title("Sensor Data Visualization")
+
+# Create and place sensor selection dropdown
+combo_sensor = ttk.Combobox(root, values=["EEG", "GSR", "MLX90614", "MAX30102", "USG"])
+combo_sensor.grid(row=0, column=0, padx=10, pady=10)
+combo_sensor.current(0)  # Default selection is "EEG"
+combo_sensor.bind("<<ComboboxSelected>>", update_sensor_form)
+
+# Create frame for sensor input fields
+frame_inputs = ttk.Frame(root)
+frame_inputs.grid(row=1, column=0, padx=10, pady=10)
+
+# Add input fields for each sensor type
+entry_eeg_frequencies = ttk.Entry(frame_inputs)
+entry_eeg_sampling_rate = ttk.Entry(frame_inputs)
+entry_eeg_duration = ttk.Entry(frame_inputs)
+entry_eeg_noise = ttk.Entry(frame_inputs)
+
+entry_gsr_voltage = ttk.Entry(frame_inputs)
+entry_gsr_current = ttk.Entry(frame_inputs)
+
+entry_mlx_voltage = ttk.Entry(frame_inputs)
+entry_mlx_calibration = ttk.Entry(frame_inputs)
+entry_mlx_reference_temp = ttk.Entry(frame_inputs)
+
+entry_max_ir = ttk.Entry(frame_inputs)
+entry_max_red = ttk.Entry(frame_inputs)
+
+entry_usg_frequency = ttk.Entry(frame_inputs)
+entry_usg_noise = ttk.Entry(frame_inputs)
+entry_usg_speed = ttk.Entry(frame_inputs)
+
+combo_usg_media = ttk.Combobox(frame_inputs, values=["Liquid", "Soft Tissue", "Bone"])
+
+# Create buttons and reset button
+reset_button = ttk.Button(root, text="Reset Form", command=lambda: combo_sensor.set("EEG"))
+
+# Create the matplotlib figure and axes
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+# Create canvas for the figure to be displayed in the Tkinter window
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.get_tk_widget().grid(row=2, column=0, padx=10, pady=10)
+
+root.mainloop()
